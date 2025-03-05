@@ -1,0 +1,237 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.util.*;
+
+public class TetrisGame extends JFrame {
+    private final int WIDTH = 10;
+    private final int HEIGHT = 20;
+
+    private char[][] board = new char[HEIGHT][WIDTH];
+    private Stack<char[]> stack = new Stack<>();
+    private Queue<char[][]> blockQueue = new LinkedList<>();
+
+    private char[][] currentBlock;
+    private int currentX = 4, currentY = 0;
+
+    private JPanel boardPanel;
+    private JLabel previewLabel;
+
+    private final char[][][] TETROMINOES = {
+            { {'#', '#', '#', '#'} },
+            { {'#', '#'}, {'#', '#'} },
+            { {'#', '#', '#'}, {' ', '#', ' '} },
+            { {'#', '#', ' '}, {' ', '#', '#'} },
+            { {' ', '#', '#'}, {'#', '#', ' '} }
+    };
+
+    public TetrisGame() {
+        setTitle("Tetris with Queue & Stack");
+        setSize(400, 600);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+
+        initBoard();
+        initUI();
+        generateNextBlocks();
+
+        Timer timer = new Timer(500, e -> gameLoop());
+        timer.start();
+    }
+
+    private void initBoard() {
+        for (int i = 0; i < HEIGHT; i++) {
+            stack.push(new char[WIDTH]);
+            Arrays.fill(stack.peek(), ' ');
+        }
+    }
+
+    private void initUI() {
+        boardPanel = new JPanel(new GridLayout(HEIGHT, WIDTH));
+        boardPanel.setPreferredSize(new Dimension(200, 400));
+        add(boardPanel, BorderLayout.CENTER);
+
+        JPanel controls = new JPanel();
+        JButton leftButton = new JButton("Left");
+        JButton rightButton = new JButton("Right");
+        JButton rotateButton = new JButton("Rotate");
+
+        leftButton.addActionListener(e -> moveLeft());
+        rightButton.addActionListener(e -> moveRight());
+        rotateButton.addActionListener(e -> rotateBlock());
+
+        controls.add(leftButton);
+        controls.add(rightButton);
+        controls.add(rotateButton);
+        add(controls, BorderLayout.SOUTH);
+
+        previewLabel = new JLabel();
+        previewLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        add(previewLabel, BorderLayout.NORTH);
+
+        updateBoard();
+    }
+
+    private void generateNextBlocks() {
+        for (int i = 0; i < 3; i++) {
+            blockQueue.add(randomBlock());
+        }
+        spawnBlock();
+    }
+
+    private char[][] randomBlock() {
+        return TETROMINOES[new Random().nextInt(TETROMINOES.length)];
+    }
+
+    private void spawnBlock() {
+        currentBlock = blockQueue.poll();
+        blockQueue.add(randomBlock());
+        currentX = 4;
+        currentY = 0;
+
+        updatePreview();
+        if (!canMove(currentX, currentY)) {
+            JOptionPane.showMessageDialog(this, "Game Over!");
+            System.exit(0);
+        }
+    }
+
+    private void gameLoop() {
+        if (canMove(currentX, currentY + 1)) {
+            currentY++;
+        } else {
+            placeBlock();
+            clearLines();
+            spawnBlock();
+        }
+        updateBoard();
+    }
+
+    private void moveLeft() {
+        if (canMove(currentX - 1, currentY)) {
+            currentX--;
+            updateBoard();
+        }
+    }
+
+    private void moveRight() {
+        if (canMove(currentX + 1, currentY)) {
+            currentX++;
+            updateBoard();
+        }
+    }
+
+    private void rotateBlock() {
+        char[][] rotated = rotate(currentBlock);
+        if (canMove(currentX, currentY, rotated)) {
+            currentBlock = rotated;
+            updateBoard();
+        }
+    }
+
+    private char[][] rotate(char[][] block) {
+        int rows = block.length;
+        int cols = block[0].length;
+        char[][] rotated = new char[cols][rows];
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                rotated[j][rows - 1 - i] = block[i][j];
+            }
+        }
+        return rotated;
+    }
+
+    private boolean canMove(int x, int y) {
+        return canMove(x, y, currentBlock);
+    }
+
+    private boolean canMove(int x, int y, char[][] block) {
+        for (int i = 0; i < block.length; i++) {
+            for (int j = 0; j < block[i].length; j++) {
+                if (block[i][j] == '#') {
+                    int newX = x + j;
+                    int newY = y + i;
+                    if (newX < 0 || newX >= WIDTH || newY >= HEIGHT || stack.get(newY)[newX] == '#') {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private void placeBlock() {
+        for (int i = 0; i < currentBlock.length; i++) {
+            for (int j = 0; j < currentBlock[i].length; j++) {
+                if (currentBlock[i][j] == '#') {
+                    stack.get(currentY + i)[currentX + j] = '#';
+                }
+            }
+        }
+    }
+
+    private void clearLines() {
+        for (int i = HEIGHT - 1; i >= 0; i--) {
+            if (isFullLine(stack.get(i))) {
+                stack.remove(i);
+                stack.push(new char[WIDTH]);
+                Arrays.fill(stack.peek(), ' ');
+                i++; // recheck current index after clearing
+            }
+        }
+    }
+
+    private boolean isFullLine(char[] line) {
+        for (char c : line) {
+            if (c != '#') return false;
+        }
+        return true;
+    }
+
+    private void updateBoard() {
+        boardPanel.removeAll();
+        for (int i = 0; i < HEIGHT; i++) {
+            for (int j = 0; j < WIDTH; j++) {
+                JLabel cell = new JLabel(" ");
+                cell.setOpaque(true);
+                cell.setBackground(stack.get(i)[j] == '#' ? Color.BLUE : Color.WHITE);
+
+                if (isCurrentBlock(i, j)) {
+                    cell.setBackground(Color.RED);
+                }
+
+                cell.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+                boardPanel.add(cell);
+            }
+        }
+        boardPanel.revalidate();
+        boardPanel.repaint();
+    }
+
+    private boolean isCurrentBlock(int row, int col) {
+        int relRow = row - currentY;
+        int relCol = col - currentX;
+        if (relRow < 0 || relRow >= currentBlock.length || relCol < 0 || relCol >= currentBlock[0].length) {
+            return false;
+        }
+        return currentBlock[relRow][relCol] == '#';
+    }
+
+    private void updatePreview() {
+        StringBuilder previewText = new StringBuilder("<html>Next Block:<br>");
+        char[][] next = blockQueue.peek();
+        for (char[] row : next) {
+            for (char c : row) {
+                previewText.append(c == '#' ? "■" : "&nbsp;");
+            }
+            previewText.append("<br>");
+        }
+        previewText.append("</html>");
+        previewLabel.setText(previewText.toString());
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new TetrisGame().setVisible(true));
+    }
+}
